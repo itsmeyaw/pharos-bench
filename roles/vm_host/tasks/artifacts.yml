@@ -1,0 +1,35 @@
+- name: rustup
+  ansible.builtin.shell: curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+  args: { creates: "{{ ansible_env.HOME }}/.cargo/bin/rustup" }
+
+- name: Clone Pharos (needs your SSH agent unless the repo is public)
+  ansible.builtin.git:
+    repo: "{{ pharos_repo }}"
+    dest: "{{ host_dir }}/pharos"
+    version: "{{ pharos_ref }}"
+    accept_hostkey: true
+    force: true
+
+- name: Build Pharos and the synthetic Kubernetes API with the repo's pinned toolchain
+  ansible.builtin.command:
+    cmd: "cargo build --release --locked {{ item }}"
+    chdir: "{{ host_dir }}/pharos"
+  loop: ["-p pharos-dns", "-p pharos-kubernetes --example memory"]
+  environment:
+    PATH: "{{ ansible_env.HOME }}/.cargo/bin:{{ ansible_env.PATH }}"
+  changed_when: true
+
+- name: CoreDNS release
+  ansible.builtin.shell: |
+    set -e
+    curl -fsSL -o coredns.tgz.part https://github.com/coredns/coredns/releases/download/v{{ coredns_version }}/coredns_{{ coredns_version }}_linux_amd64.tgz
+    echo "{{ coredns_sha256 }}  coredns.tgz.part" | sha256sum -c -
+    mv coredns.tgz.part coredns.tgz
+  args: { chdir: "{{ host_dir }}", creates: "{{ host_dir }}/coredns.tgz" }
+
+- name: Unpack CoreDNS
+  ansible.builtin.unarchive:
+    src: "{{ host_dir }}/coredns.tgz"
+    dest: "{{ host_dir }}"
+    remote_src: true
+    creates: "{{ host_dir }}/coredns"

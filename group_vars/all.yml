@@ -1,0 +1,23 @@
+bench_root: "{{ playbook_dir }}/.."
+topology: default
+topo: "{{ lookup('file', bench_root + '/topologies/' + topology + '.yml') | from_yaml }}"
+
+# Key pair used for the VMs (controller -> VM through the host, and host -> VM).
+bench_ssh_key: "{{ lookup('env', 'HOME') }}/.ssh/id_ed25519"
+bench_ssh_pubkey: "{{ lookup('file', bench_ssh_key + '.pub') }}"
+bench_host_name: "{{ groups['bench_host'][0] }}"
+
+pharos_repo: git@github.com:itsmeyaw/pharos-dns.git
+pharos_ref: main           # branch, tag or SHA; resolved to a SHA and recorded in the manifest
+
+coredns_version: 1.15.0
+coredns_sha256: 2495c5b8f3fab6d0a336c397f1227b75406d86e6ec7125744a29df9e936ab8cd
+dnsperf_version: 2.16.0
+dnsperf_sha256: 6bccbd6949a4616442fdabb8a93d20011f5fbc2e5492d467e612a16aa39426e2
+guest_image_url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+guest_image_sums: https://cloud-images.ubuntu.com/noble/current/SHA256SUMS
+
+# Directories on the host / guests
+host_dir: /var/lib/pharos-bench
+guest_lib: /usr/local/lib/bench
+guest_data: /var/lib/bench

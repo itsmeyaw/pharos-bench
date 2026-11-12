@@ -1,0 +1,2 @@
+# Nodes come from topologies/<name>.yml (dut, loadgen, backend); scenarios use only those names.
+topology: default

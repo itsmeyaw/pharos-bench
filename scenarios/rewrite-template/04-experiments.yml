@@ -1,0 +1,2 @@
+experiments:
+  - { name: rewrite-template, stack: rewrite-template, servers: [pharos, coredns] }

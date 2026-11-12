@@ -1,0 +1,23 @@
+stacks:
+  acl-view:
+    corefile: |
+      example.test:53 {
+          @MULTISOCKET@
+          view internal {
+              expr incidr(client_ip(), '10.77.0.0/24')
+          }
+          acl {
+              block type ANY net 192.0.2.0/24
+              allow net 10.77.0.0/24
+              block
+          }
+          hosts /etc/bench/hosts example.test
+      }
+    services:
+      dut:
+        - { name: hosts-data, level: 0, count: 100000, zone: example.test }
+      loadgen:
+        - name: queries
+          families: ["h{}.example.test,1.0,100000"]
+          types: "A=70,AAAA=30"
+          probe: { name: h1.example.test, type: A, answer: true }

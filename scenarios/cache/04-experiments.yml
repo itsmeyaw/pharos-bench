@@ -1,0 +1,4 @@
+experiments:
+  - { name: cache-hit0,  stack: cache-hit0,  servers: [pharos, coredns] }
+  - { name: cache-hit50, stack: cache-hit50, servers: [pharos, coredns] }
+  - { name: cache-hit95, stack: cache-hit95, servers: [pharos, coredns] }

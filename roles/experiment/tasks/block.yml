@@ -1,0 +1,53 @@
+# One block = one server at one dut_cores setting, started cold, then all of its runs.
+- name: "{{ blk.id }}"
+  ansible.builtin.set_fact:
+    exp: "{{ plan.experiments[blk.exp] }}"
+
+- ansible.builtin.include_tasks: prepare.yml
+  when: blk.prepare
+
+- name: Reboot the dut so every server starts from the same cold state
+  ansible.builtin.shell: sleep 1 && systemctl reboot
+  async: 5
+  poll: 0
+  become: true
+  delegate_to: dut
+  changed_when: true
+  when: not ansible_check_mode
+
+- name: Wait for the dut
+  ansible.builtin.wait_for_connection: { delay: 20, timeout: 300 }
+  delegate_to: dut
+
+- name: Install the Corefile
+  ansible.builtin.copy:
+    src: "{{ build_dir }}/{{ blk.corefile }}"
+    dest: /etc/bench/Corefile
+    mode: "0644"
+  become: true
+  delegate_to: dut
+
+- name: Start the server confined to {{ blk.cores }} cores
+  ansible.builtin.shell: >-
+    systemd-run --unit={{ unit }} --collect -p LimitNOFILE=1048576
+    -p StandardOutput=file:/var/log/bench/dns.log -p StandardError=file:/var/log/bench/dns.err
+    taskset -c {{ blk.taskset }} {{ blk.binary }} {{ blk.args | replace('{corefile}', '/etc/bench/Corefile') }}
+  become: true
+  delegate_to: dut
+  changed_when: true
+
+- name: Wait until it answers the stack's probe query
+  ansible.builtin.shell: "{{ exp.ready }}"
+  register: ready
+  until: ready.rc == 0
+  retries: 120
+  delay: 1
+  delegate_to: loadgen
+  changed_when: false
+
+- ansible.builtin.include_tasks: run.yml
+  loop: "{{ blk.runs }}"
+  loop_control: { loop_var: run }
+
+- ansible.builtin.include_tasks: collect.yml
+  when: blk.last

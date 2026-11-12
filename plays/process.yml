@@ -1,0 +1,17 @@
+# Usage: ansible-playbook plays/process.yml [-e run_id=<dir under results/>]
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Newest run if none given
+      ansible.builtin.shell: ls -1t {{ playbook_dir }}/../results | head -1
+      register: newest
+      changed_when: false
+      when: run_id is not defined
+    - name: Summarise
+      ansible.builtin.command: >-
+        {{ ansible_playbook_python }} {{ playbook_dir }}/../scripts/process.py
+        {{ playbook_dir }}/../results/{{ run_id | default(newest.stdout) }}
+      register: out
+      changed_when: true
+    - ansible.builtin.debug: { var: out.stdout_lines }

@@ -1,0 +1,7 @@
+build/
+results/
+hosts
+*.tfstate*
+.terraform/
+terraform/aws/*.tfvars
+__pycache__/

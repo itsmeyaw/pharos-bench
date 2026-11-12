@@ -1,0 +1,36 @@
+<domain type='kvm'>
+  <name>{{ name }}</name>
+  <memory unit='MiB'>{{ node.memory_mb }}</memory>
+  <vcpu placement='static'>{{ node.vcpus }}</vcpu>
+  <cputune>
+{% for cpu in layout[name] %}
+    <vcpupin vcpu='{{ loop.index0 }}' cpuset='{{ cpu }}'/>
+{% endfor %}
+    <emulatorpin cpuset='{{ layout.host | join(",") }}'/>
+  </cputune>
+  <os><type arch='x86_64' machine='q35'>hvm</type><boot dev='hd'/></os>
+  <features><acpi/><apic/></features>
+  <cpu mode='host-passthrough'><topology sockets='1' dies='1' cores='{{ node.vcpus }}' threads='1'/></cpu>
+  <on_reboot>restart</on_reboot>
+  <devices>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='none' io='native'/>
+      <source file='{{ vm_dir }}/{{ name }}/disk.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ vm_dir }}/{{ name }}/seed.iso'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    <interface type='network'>
+      <mac address='{{ node.mac }}'/>
+      <source network='pbench'/>
+      <model type='virtio'/>
+      <driver name='vhost' queues='{{ node.vcpus }}'/>
+    </interface>
+    <serial type='pty'/>
+    <console type='pty'/>
+  </devices>
+</domain>

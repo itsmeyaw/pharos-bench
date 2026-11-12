@@ -1,0 +1,12 @@
+stacks:
+  whoami:
+    corefile: |
+      .:53 {
+          @MULTISOCKET@
+          whoami
+      }
+    services:
+      loadgen:
+        - name: queries
+          families: ["q{}.example.test,1.0,1000"]
+          probe: { name: example.org, type: A }

@@ -1,0 +1,15 @@
+# Prepare any SSH-reachable Linux/KVM host: build the binaries, create the three VMs, configure them.
+# Usage: ansible-playbook plays/install.yml
+- name: Host
+  hosts: bench_host
+  become: false
+  roles: [vm_host]
+
+- name: VMs
+  hosts: vms
+  gather_facts: false
+  roles: [vm_guest]
+
+- name: Binaries into the VMs and CPU isolation
+  hosts: bench_host
+  roles: [vm_finish]

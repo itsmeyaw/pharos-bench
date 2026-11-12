@@ -1,0 +1,10 @@
+uses: [whoami]
+experiments:
+  - name: smoke
+    stack: whoami
+    servers: [pharos, coredns]
+    protocols: { peak: [udp], sweep: [udp] }
+    sweep: [0.5]
+    reps: 1
+    warmup: 5
+    duration: 10

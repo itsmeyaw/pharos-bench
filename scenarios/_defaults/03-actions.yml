@@ -1,0 +1,5 @@
+# `at` is seconds into the measured phase.
+actions:
+  none: []
+  reload:       [{ at: 30, node: dut,     do: reload }]
+  backend-slow: [{ at: 30, node: backend, do: delay, ms: 50 }]

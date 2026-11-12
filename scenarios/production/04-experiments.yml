@@ -1,0 +1,17 @@
+experiments:
+  - { name: production, stack: production, servers: [pharos, coredns] }
+  # Disturbances at half of the steady-state peak; rates come from the `production` experiment above.
+  - name: production-reload
+    stack: production
+    servers: [pharos, coredns]
+    actions: reload
+    ref: production
+    protocols: { peak: [], sweep: [udp] }
+    sweep: [0.5]
+  - name: production-backend-slow
+    stack: production
+    servers: [pharos, coredns]
+    actions: backend-slow
+    ref: production
+    protocols: { peak: [], sweep: [udp] }
+    sweep: [0.5]

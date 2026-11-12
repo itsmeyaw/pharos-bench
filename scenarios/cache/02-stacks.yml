@@ -1,0 +1,35 @@
+# Hit ratio is designed into the query stream (hot pool vs. never-repeated names); process.py checks
+# the achieved ratio against the server's own cache metrics (see README).
+stacks:
+  cache-hit0: &cache
+    corefile: |
+      .:53 {
+          @MULTISOCKET@
+          prometheus :9153
+          cache {
+              success 1000000
+              denial 100000
+          }
+          forward . @UPSTREAM@
+      }
+    services:
+      backend:
+        - { name: nsd, zone: up.test }
+      loadgen:
+        - &queries
+          name: queries
+          families: ["h{}.h.up.test,1.0,5000"]
+          unique_pattern: "u@SALT@x{}.h.up.test"
+          hot_pool: 5000
+          hit: 0.0
+          probe: { name: h1.h.up.test, type: A, answer: true }
+  cache-hit50:
+    <<: *cache
+    services:
+      backend: [{ name: nsd, zone: up.test }]
+      loadgen: [{ <<: *queries, hit: 0.5 }]
+  cache-hit95:
+    <<: *cache
+    services:
+      backend: [{ name: nsd, zone: up.test }]
+      loadgen: [{ <<: *queries, hit: 0.95 }]

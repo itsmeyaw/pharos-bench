@@ -1,0 +1,67 @@
+- name: Key for host -> VM access (VMs are disposable)
+  ansible.builtin.command: ssh-keygen -q -t ed25519 -N '' -f {{ host_dir }}/id_ed25519
+  args: { creates: "{{ host_dir }}/id_ed25519" }
+
+- name: Read it
+  ansible.builtin.slurp: { src: "{{ host_dir }}/id_ed25519.pub" }
+  register: host_pubkey
+
+- name: Image directory
+  ansible.builtin.file: { path: "{{ vm_dir }}", state: directory, mode: "0755" }
+  become: true
+
+- name: Ubuntu cloud image
+  ansible.builtin.shell: |
+    set -e
+    curl -fsSL -o base.img.part {{ guest_image_url }}
+    sum=$(curl -fsSL {{ guest_image_sums }} | awk '$2 ~ /{{ guest_image_url | basename }}$/ {print $1}')
+    echo "$sum  base.img.part" | sha256sum -c -
+    mv base.img.part base.img
+  args: { chdir: "{{ vm_dir }}", creates: "{{ vm_dir }}/base.img" }
+  become: true
+
+- name: Isolated-from-AWS NAT network for the VMs (bench traffic stays on the bridge)
+  ansible.builtin.template: { src: network.xml.j2, dest: "{{ vm_dir }}/network.xml" }
+  become: true
+
+- name: Define and start the network
+  ansible.builtin.shell: |
+    virsh net-info pbench >/dev/null 2>&1 || virsh net-define {{ vm_dir }}/network.xml
+    virsh net-start pbench 2>/dev/null || true
+    virsh net-autostart pbench
+  become: true
+  changed_when: false
+
+- name: Per-VM directory
+  ansible.builtin.file: { path: "{{ vm_dir }}/{{ item.key }}", state: directory, mode: "0755" }
+  loop: "{{ topo.nodes | dict2items }}"
+  become: true
+
+- name: cloud-init files and domain XML
+  ansible.builtin.template:
+    src: "{{ item.1 }}.j2"
+    dest: "{{ vm_dir }}/{{ item.0.key }}/{{ item.1 }}"
+  loop: "{{ topo.nodes | dict2items | product(['user-data', 'meta-data', 'network-config', 'domain.xml']) | list }}"
+  vars:
+    name: "{{ item.0.key }}"
+    node: "{{ item.0.value }}"
+  become: true
+
+- name: Create disks and seed images
+  ansible.builtin.shell: |
+    cd {{ vm_dir }}/{{ item.key }}
+    [ -f disk.qcow2 ] || qemu-img create -q -f qcow2 -F qcow2 -b ../base.img disk.qcow2 {{ vm_disk_gb }}G
+    cloud-localds -N network-config seed.iso user-data meta-data
+  args: { executable: /bin/bash }
+  loop: "{{ topo.nodes | dict2items }}"
+  become: true
+  changed_when: false
+
+- name: Define and start the VMs
+  ansible.builtin.shell: |
+    virsh dominfo {{ item.key }} >/dev/null 2>&1 || virsh define {{ vm_dir }}/{{ item.key }}/domain.xml
+    [ "$(virsh domstate {{ item.key }})" = running ] || virsh start {{ item.key }}
+  args: { executable: /bin/bash }
+  loop: "{{ topo.nodes | dict2items }}"
+  become: true
+  changed_when: false

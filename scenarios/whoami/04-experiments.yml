@@ -1,0 +1,10 @@
+experiments:
+  - name: whoami
+    stack: whoami
+    servers: [pharos, coredns]
+    protocols: { peak: [udp, tcp], sweep: [udp] }
+  # Informational: CoreDNS without multisocket (one UDP socket), as shipped by default.
+  - name: whoami-nomulti
+    stack: whoami
+    servers: [coredns-nomulti]
+    protocols: { peak: [udp], sweep: [] }

@@ -1,0 +1,2 @@
+vm_dir: /var/lib/libvirt/images/pharos-bench
+vm_disk_gb: 80

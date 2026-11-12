@@ -1,0 +1,6 @@
+<network>
+  <name>pbench</name>
+  <bridge name='{{ topo.bridge.name }}' stp='off'/>
+  <forward mode='nat'/>
+  <ip address='{{ topo.bridge.host_ip }}' netmask='255.255.255.0'/>
+</network>

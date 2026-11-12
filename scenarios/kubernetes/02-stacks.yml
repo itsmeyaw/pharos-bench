@@ -1,0 +1,23 @@
+# The backend runs pharos-kubernetes' synthetic API (10,000 Services and EndpointSlices, namespace `bench`).
+stacks:
+  kubernetes:
+    corefile: |
+      cluster.local:53 {
+          @MULTISOCKET@
+          kubernetes cluster.local {
+              kubeconfig @KUBECONFIG@
+              startup_timeout 60s
+          }
+      }
+    services:
+      backend:
+        - { name: k8s-api }
+      dut:
+        - { name: kubeconfig }
+      loadgen:
+        - name: queries
+          families: ["svc{}.bench.svc.cluster.local,1.0,10000"]
+          types: "A=75,AAAA=25"
+          nx: 0.05
+          nx_pattern: "nosvc{}.bench.svc.cluster.local"
+          probe: { name: svc1.bench.svc.cluster.local, type: A, answer: true }

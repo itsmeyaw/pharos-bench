@@ -1,0 +1,9 @@
+version: 2
+ethernets:
+  eth0:
+    match: { macaddress: "{{ node.mac }}" }
+    set-name: eth0
+    addresses: [{{ node.ip }}/24]
+    routes:
+      - { to: default, via: {{ topo.bridge.host_ip }} }
+    nameservers: { addresses: [1.1.1.1, 8.8.8.8] }

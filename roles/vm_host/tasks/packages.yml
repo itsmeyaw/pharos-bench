@@ -1,0 +1,11 @@
+- name: Install packages
+  ansible.builtin.apt:
+    name: [qemu-system-x86, qemu-utils, libvirt-daemon-system, libvirt-clients, cloud-image-utils,
+           build-essential, pkg-config, cmake, clang, git, curl, ca-certificates, sysstat, xz-utils]
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: libvirtd is running
+  ansible.builtin.service: { name: libvirtd, state: started, enabled: true }
+  become: true

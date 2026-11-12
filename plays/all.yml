@@ -1,0 +1,4 @@
+# Usage: ansible-playbook plays/all.yml -e scene=smoke
+- ansible.builtin.import_playbook: install.yml
+- ansible.builtin.import_playbook: scenario.yml
+- ansible.builtin.import_playbook: process.yml

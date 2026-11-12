@@ -1,0 +1,107 @@
+- name: Wait for the VM (first boot runs cloud-init)
+  ansible.builtin.wait_for_connection: { timeout: 600, delay: 5 }
+
+- name: Wait for cloud-init
+  ansible.builtin.command: cloud-init status --wait
+  changed_when: false
+
+- name: Common packages
+  ansible.builtin.apt:
+    name: [sysstat, python3, dnsutils, ethtool, iproute2, curl]
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Role-specific packages
+  ansible.builtin.apt:
+    name: "{{ {'backend': ['nsd'], 'loadgen': ['build-essential', 'pkg-config', 'libssl-dev', 'libck-dev', 'libldns-dev', 'libnghttp2-dev', 'libjson-c-dev']}.get(inventory_hostname, []) }}"
+  become: true
+  when: inventory_hostname in ['backend', 'loadgen']
+
+- name: Identical kernel and socket tuning on every VM
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/90-bench.conf
+    content: |
+      net.core.rmem_max = 26214400
+      net.core.wmem_max = 26214400
+      net.core.rmem_default = 4194304
+      net.core.netdev_max_backlog = 50000
+      net.ipv4.ip_local_port_range = 10000 65000
+  become: true
+  register: sysctl
+
+- name: Apply sysctls
+  ansible.builtin.command: sysctl --system
+  become: true
+  when: sysctl.changed
+
+- name: resolved drop-in directory
+  ansible.builtin.file: { path: /etc/systemd/resolved.conf.d, state: directory, mode: "0755" }
+  become: true
+
+- name: Free port 53 (systemd-resolved stub listens on 127.0.0.53:53)
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/bench.conf
+    content: "[Resolve]\nDNSStubListener=no\n"
+  become: true
+  register: resolved
+
+- name: Restart resolved and use its real resolv.conf
+  ansible.builtin.shell: |
+    systemctl restart systemd-resolved
+    ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  become: true
+  when: resolved.changed
+
+- name: Spread NIC interrupts over every vCPU queue at each boot
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/bench-nic.service
+    content: |
+      [Unit]
+      After=network-online.target
+      Wants=network-online.target
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/sh -c 'ethtool -L eth0 combined {{ topo.nodes[inventory_hostname].vcpus }} || true'
+      [Install]
+      WantedBy=multi-user.target
+  become: true
+
+- name: Enable it
+  ansible.builtin.systemd: { name: bench-nic, enabled: true, state: started, daemon_reload: true }
+  become: true
+
+- name: netem for the backend's fixed upstream delay
+  ansible.builtin.shell: modprobe sch_netem 2>/dev/null || { apt-get install -y linux-modules-extra-$(uname -r) && modprobe sch_netem; }
+  become: true
+  changed_when: false
+  when: inventory_hostname == 'backend'
+
+- name: Directories
+  ansible.builtin.file: { path: "{{ item }}", state: directory, mode: "0755" }
+  loop: ["{{ guest_lib }}", "{{ guest_data }}", "{{ guest_data }}/results", /etc/bench, /var/log/bench]
+  become: true
+
+- name: Scripts
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ guest_lib }}/{{ item | basename }}"
+    mode: "0755"
+  loop: "{{ lookup('fileglob', playbook_dir + '/../scripts/*.py', wantlist=True) + [playbook_dir + '/../scripts/bench-probe.sh'] }}"
+  become: true
+
+- name: dnsperf source
+  ansible.builtin.shell: |
+    set -e
+    curl -fsSL -o /tmp/dnsperf.tar.gz https://www.dns-oarc.net/files/dnsperf/dnsperf-{{ dnsperf_version }}.tar.gz
+    echo "{{ dnsperf_sha256 }}  /tmp/dnsperf.tar.gz" | sha256sum -c -
+  args: { creates: /usr/local/bin/dnsperf }
+  when: inventory_hostname == 'loadgen'
+
+- name: Build dnsperf (needs -O latency-histogram, so not the distro's older package)
+  ansible.builtin.shell: |
+    set -e
+    cd /tmp && tar xzf dnsperf.tar.gz && cd dnsperf-{{ dnsperf_version }}
+    ./configure && make -j"$(nproc)" && sudo make install
+  args: { executable: /bin/bash, creates: /usr/local/bin/dnsperf }
+  when: inventory_hostname == 'loadgen'

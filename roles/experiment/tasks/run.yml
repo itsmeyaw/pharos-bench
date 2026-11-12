@@ -1,0 +1,70 @@
+- name: Run directory and offered load
+  ansible.builtin.set_fact:
+    rdir: "{{ blk.exp }}/{{ blk.server }}-c{{ blk.cores }}/{{ blk.phase }}-rep{{ blk.rep }}/{{ run.label }}"
+
+- name: Slowest server's median peak (sweep rates are fractions of it, so both servers see the same load)
+  ansible.builtin.command: python3 {{ guest_lib }}/refpeak.py {{ plan.experiments[exp.ref].runs_jsonl }} {{ run.proto }} {{ blk.cores }}
+  register: refpeak
+  delegate_to: loadgen
+  changed_when: false
+  when: run.mode == 'sweep'
+
+- name: Offered load
+  ansible.builtin.set_fact:
+    rate: "{{ ((run.frac * (refpeak.stdout | int)) | int) if run.mode == 'sweep' else 0 }}"
+    common: >-
+      {{ ['--server-ip', topo.nodes.dut.ip, '--proto', run.proto, '--queries', exp.queries,
+          '--out', guest_data ~ '/results/' ~ rdir ~ '/dnsperf'] + (['--salted'] if exp.salted else []) }}
+    meta:
+      exp: "{{ blk.exp }}"
+      server: "{{ blk.server }}"
+      cores: "{{ blk.cores }}"
+      rep: "{{ blk.rep }}"
+      phase: "{{ blk.phase }}"
+      proto: "{{ run.proto }}"
+      mode: "{{ run.mode }}"
+      frac: "{{ run.frac }}"
+      label: "{{ run.label }}"
+      rundir: "{{ rdir }}"
+      target_hit: "{{ exp.target_hit }}"
+
+- name: Warmup (output discarded)
+  ansible.builtin.command:
+    argv: "{{ ['python3', guest_lib ~ '/bench-run.py', 'warmup', '--seconds', exp.warmup, '--rate', rate] + common }}"
+  delegate_to: loadgen
+  changed_when: true
+
+- name: Start probes on the dut
+  ansible.builtin.command: "{{ guest_lib }}/bench-probe.sh start {{ guest_data }}/results/{{ rdir }} {{ exp.duration + 3 }} {{ unit }}"
+  become: true
+  delegate_to: dut
+  changed_when: true
+
+- name: Schedule disturbances (seconds into the measured phase)
+  ansible.builtin.command: systemd-run --on-active={{ item.at }}s --unit=bench-act-{{ ai }} --collect /bin/sh -c {{ item.cmd | quote }}
+  become: true
+  delegate_to: "{{ item.node }}"
+  loop: "{{ exp.actions }}"
+  loop_control: { index_var: ai }
+  changed_when: true
+
+- name: Measure
+  ansible.builtin.command:
+    argv: >-
+      {{ ['python3', guest_lib ~ '/bench-run.py', 'measure', '--seconds', exp.duration, '--rate', rate,
+          '--meta', meta | to_json, '--runs-jsonl', exp.runs_jsonl] + common }}
+  delegate_to: loadgen
+  changed_when: true
+
+- name: Stop probes
+  ansible.builtin.command: "{{ guest_lib }}/bench-probe.sh stop {{ guest_data }}/results/{{ rdir }}"
+  become: true
+  delegate_to: dut
+  changed_when: true
+
+- name: Undo disturbances
+  ansible.builtin.command: "{{ item.cmd }}"
+  become: true
+  delegate_to: "{{ item.node }}"
+  loop: "{{ exp.cleanup }}"
+  changed_when: true

@@ -1,0 +1,30 @@
+- name: Clear this experiment's earlier results
+  ansible.builtin.shell: rm -rf {{ guest_data }}/results/{{ blk.exp }} && mkdir -p {{ guest_data }}/results/{{ blk.exp }} && chown -R bench:bench {{ guest_data }}/results/{{ blk.exp }}
+  become: true
+  delegate_to: "{{ item }}"
+  loop: [dut, loadgen]
+  changed_when: true
+
+- name: Backend fixtures
+  ansible.builtin.shell: "{{ item }}"
+  args: { executable: /bin/bash }
+  become: true
+  delegate_to: backend
+  loop: "{{ exp.prepare.backend }}"
+  changed_when: true
+
+- name: Dut fixtures
+  ansible.builtin.shell: "{{ item }}"
+  args: { executable: /bin/bash }
+  become: true
+  delegate_to: dut
+  loop: "{{ exp.prepare.dut }}"
+  changed_when: true
+
+- name: Loadgen fixtures (query file)
+  ansible.builtin.shell: "{{ item }}"
+  args: { executable: /bin/bash }
+  become: true
+  delegate_to: loadgen
+  loop: "{{ exp.prepare.loadgen }}"
+  changed_when: true

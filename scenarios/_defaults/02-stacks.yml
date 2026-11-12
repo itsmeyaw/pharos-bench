@@ -1,0 +1,7 @@
+# Servers under test. Both get the same Corefile; @MULTISOCKET@ expands to `multisocket <dut_cores>`
+# (or nothing for the informational coredns-nomulti variant).
+servers:
+  pharos:          { binary: /usr/local/bin/pharos,  args: "--conf {corefile}", multisocket: true }
+  coredns:         { binary: /usr/local/bin/coredns, args: "-conf {corefile}",  multisocket: true }
+  coredns-nomulti: { binary: /usr/local/bin/coredns, args: "-conf {corefile}",  multisocket: false }
+stacks: {}

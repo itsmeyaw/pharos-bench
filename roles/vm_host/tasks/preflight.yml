@@ -1,0 +1,49 @@
+# Host contract (README): x86_64 Debian/Ubuntu with KVM and enough physical cores and memory for the topology.
+- name: Host is a supported distribution
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture == 'x86_64'
+      - (ansible_distribution == 'Ubuntu' and ansible_distribution_version in ['22.04', '24.04']) or
+        (ansible_distribution == 'Debian' and ansible_distribution_major_version == '12')
+    fail_msg: "Need x86_64 Ubuntu 22.04/24.04 or Debian 12, got {{ ansible_architecture }} {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+- name: KVM is available
+  ansible.builtin.stat: { path: /dev/kvm }
+  register: kvm
+  failed_when: not kvm.stat.exists
+  # shortcut: no check that KVM is usable by libvirt; virsh start fails loudly if it is not.
+
+- name: Detect virtualization (nested hosts are allowed but flagged)
+  ansible.builtin.command: systemd-detect-virt
+  register: virt
+  failed_when: false
+  changed_when: false
+
+- name: Warn about nested virtualization
+  ansible.builtin.debug:
+    msg: "Host is virtualized ({{ virt.stdout }}); results are not comparable to bare metal and the manifest says nested: true."
+  when: virt.stdout != 'none'
+
+- name: Work directory exists and is owned by the login user
+  ansible.builtin.file: { path: "{{ host_dir }}", state: directory, owner: "{{ ansible_user_id }}", mode: "0755" }
+  become: true
+
+- name: Copy cpu_layout.py
+  ansible.builtin.copy: { src: "{{ playbook_dir }}/../scripts/cpu_layout.py", dest: "{{ host_dir }}/cpu_layout.py", mode: "0755" }
+
+- name: Assign one physical core per vCPU (fails if the topology does not fit)
+  ansible.builtin.shell: >-
+    lscpu -p=CPU,CORE,SOCKET | python3 {{ host_dir }}/cpu_layout.py host={{ topo.host_cores }}
+    {% for n, v in topo.nodes.items() %}{{ n }}={{ v.vcpus }} {% endfor %}
+    | tee {{ host_dir }}/layout.json
+  register: layout_out
+  changed_when: false
+
+- name: Keep the layout
+  ansible.builtin.set_fact:
+    layout: "{{ layout_out.stdout | from_json }}"
+
+- name: Enough memory
+  ansible.builtin.assert:
+    that: ansible_memtotal_mb >= topo.host_memory_mb + (topo.nodes.values() | map(attribute='memory_mb') | sum)
+    fail_msg: "Need {{ topo.host_memory_mb + (topo.nodes.values() | map(attribute='memory_mb') | sum) }} MiB, host has {{ ansible_memtotal_mb }}"

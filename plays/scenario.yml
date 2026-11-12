@@ -1,0 +1,86 @@
+# Usage: ansible-playbook plays/scenario.yml -e scene=smoke
+- name: Host facts for the manifest
+  hosts: bench_host
+  tasks:
+    - name: Pharos revision that was built
+      ansible.builtin.command: git -C {{ host_dir }}/pharos rev-parse HEAD
+      register: pharos_sha_out
+      check_mode: false
+      changed_when: false
+    - name: CPU model
+      ansible.builtin.shell: lscpu | sed -n 's/^Model name:[[:space:]]*//p'
+      register: cpu_model
+      check_mode: false
+      changed_when: false
+    - name: Virtualization
+      ansible.builtin.command: systemd-detect-virt
+      register: virt
+      check_mode: false
+      failed_when: false
+      changed_when: false
+    - ansible.builtin.set_fact:
+        pharos_sha: "{{ pharos_sha_out.stdout }}"
+        host_model: "{{ cpu_model.stdout }}"
+        nested: "{{ virt.stdout != 'none' }}"
+        virt_kind: "{{ virt.stdout }}"
+
+- name: Run the scenario
+  hosts: localhost
+  # no `connection: local` here: it would also apply to delegate_to targets
+  gather_facts: false
+  tasks:
+    - ansible.builtin.assert: { that: scene is defined, fail_msg: "pass -e scene=<name> (a directory under scenarios/)" }
+
+    - name: Run id
+      ansible.builtin.set_fact:
+        run_id: "{{ run_id | default(lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') ~ '-' ~ scene) }}"
+        build_dir: "{{ playbook_dir }}/../build/{{ scene }}"
+        unit: dns-bench
+
+    - ansible.builtin.set_fact:
+        results_dir: "{{ playbook_dir }}/../results/{{ run_id }}"
+
+    - name: Expand the scenario into blocks and Corefiles
+      ansible.builtin.command: >-
+        {{ ansible_playbook_python }} {{ playbook_dir }}/../scripts/plan.py --scene {{ scene }} --out {{ build_dir }} --topology {{ topology }}
+      changed_when: false
+      check_mode: false
+
+    - name: Load the plan
+      ansible.builtin.set_fact:
+        plan: "{{ lookup('file', build_dir ~ '/plan.json') | from_json }}"
+
+    - name: The VMs are up
+      ansible.builtin.ping:
+      delegate_to: "{{ item }}"
+      loop: [dut, loadgen, backend]
+
+    - name: Results directory with the plan and Corefiles
+      ansible.builtin.copy: { src: "{{ build_dir }}/", dest: "{{ results_dir }}/plan/" }
+
+    - name: Manifest
+      ansible.builtin.copy:
+        dest: "{{ results_dir }}/manifest.json"
+        content: "{{ manifest | to_nice_json }}"
+      vars:
+        h: "{{ hostvars[bench_host_name] }}"
+        manifest:
+          run_id: "{{ run_id }}"
+          scene: "{{ scene }}"
+          pharos_repo: "{{ pharos_repo }}"
+          pharos_sha: "{{ h.pharos_sha }}"
+          coredns_version: "{{ coredns_version }}"
+          dnsperf_version: "{{ dnsperf_version }}"
+          host_model: "{{ h.host_model }}"
+          kernel: "{{ h.ansible_kernel | default('?') }}"
+          nested: "{{ h.nested }}"
+          virtualization: "{{ h.virt_kind }}"
+          topology: "{{ topo }}"
+
+    - name: Blocks
+      ansible.builtin.include_role: { name: experiment, tasks_from: block }
+      loop: "{{ plan.blocks }}"
+      loop_control: { loop_var: blk, label: "{{ blk.id }}" }
+
+    - ansible.builtin.debug:
+        msg: "Results in results/{{ run_id }}; summarise with: ansible-playbook plays/process.yml -e run_id={{ run_id }}"

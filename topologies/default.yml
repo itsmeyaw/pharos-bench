@@ -1,0 +1,9 @@
+# Node names are pseudonyms (as in EnGINE): scenarios only refer to these names.
+host_cores: 4            # physical cores kept for the host OS and QEMU emulator threads
+host_memory_mb: 8192
+bridge: { name: pbr0, network: 10.77.0.0/24, host_ip: 10.77.0.1 }
+nodes:
+  # dut runs one DNS server at a time; servers are confined to `dut_cores` of these vCPUs.
+  dut:      { ip: 10.77.0.10, mac: "52:54:00:77:00:10", vcpus: 8,  memory_mb: 16384 }
+  loadgen:  { ip: 10.77.0.20, mac: "52:54:00:77:00:20", vcpus: 16, memory_mb: 32768 }
+  backend:  { ip: 10.77.0.30, mac: "52:54:00:77:00:30", vcpus: 8,  memory_mb: 16384 }

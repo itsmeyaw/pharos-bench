@@ -1,0 +1,30 @@
+# A typical cluster-DNS-like stack: observability, cache, loop detection, forward.
+# `log` writes only denials and errors, as most deployments do.
+stacks:
+  production:
+    corefile: |
+      .:53 {
+          @MULTISOCKET@
+          errors
+          log . {
+              class denial error
+          }
+          health
+          ready
+          prometheus :9153
+          cache {
+              success 1000000
+              denial 100000
+          }
+          loop
+          forward . @UPSTREAM@
+      }
+    services:
+      backend:
+        - { name: nsd, zone: up.test }
+      loadgen:
+        - name: queries
+          families: ["h{}.h.up.test,1.0,1000000"]
+          nx: 0.07
+          nx_pattern: "x{}.up.test"
+          probe: { name: h1.h.up.test, type: A, answer: true }

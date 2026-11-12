@@ -1,0 +1,9 @@
+#cloud-config
+users:
+  - name: bench
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - {{ bench_ssh_pubkey | trim }}
+      - {{ host_pubkey.content | b64decode | trim }}
+ssh_pwauth: false

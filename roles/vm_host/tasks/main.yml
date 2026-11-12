@@ -1,0 +1,4 @@
+- ansible.builtin.import_tasks: preflight.yml
+- ansible.builtin.import_tasks: packages.yml
+- ansible.builtin.import_tasks: artifacts.yml
+- ansible.builtin.import_tasks: vms.yml

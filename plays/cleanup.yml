@@ -1,0 +1,19 @@
+# Remove the VMs, network, disks and CPU confinement from the host. Installed packages stay.
+- hosts: bench_host
+  become: true
+  tasks:
+    - name: Remove VMs
+      ansible.builtin.shell: |
+        virsh destroy {{ item }} 2>/dev/null; virsh undefine {{ item }} --remove-all-storage 2>/dev/null; true
+      loop: "{{ topo.nodes.keys() | list }}"
+      changed_when: true
+    - name: Remove network
+      ansible.builtin.shell: virsh net-destroy pbench 2>/dev/null; virsh net-undefine pbench 2>/dev/null; true
+      changed_when: true
+    - name: Remove files
+      ansible.builtin.file: { path: "{{ item }}", state: absent }
+      loop: ["{{ vm_dir | default('/var/lib/libvirt/images/pharos-bench') }}", "{{ host_dir }}/id_ed25519", "{{ host_dir }}/id_ed25519.pub", "{{ host_dir }}/layout.json"]
+    - name: Lift CPU confinement
+      ansible.builtin.command: systemctl set-property --runtime {{ item }} AllowedCPUs=
+      loop: [system.slice, user.slice, init.scope]
+      changed_when: true

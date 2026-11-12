@@ -1,0 +1,2 @@
+# Lets the host clone Pharos over SSH with your agent; nothing is stored on the host.
+ansible_ssh_common_args: -o ForwardAgent=yes

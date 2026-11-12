@@ -1,0 +1,23 @@
+- name: Read the core layout
+  ansible.builtin.slurp: { src: "{{ host_dir }}/layout.json" }
+  register: layout_file
+
+- name: Copy binaries into the VMs (host -> VM, no controller round trip)
+  ansible.builtin.shell: |
+    set -o pipefail
+    cat {{ item.src }} | ssh -i {{ host_dir }}/id_ed25519 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+      bench@{{ topo.nodes[item.vm].ip }} 'sudo systemctl stop dns-bench k8s-api 2>/dev/null; sudo tee {{ item.dest }} >/dev/null && sudo chmod 755 {{ item.dest }}'
+  args: { executable: /bin/bash }
+  loop:
+    - { vm: dut, src: "{{ host_dir }}/pharos/target/release/pharos", dest: /usr/local/bin/pharos }
+    - { vm: dut, src: "{{ host_dir }}/coredns", dest: /usr/local/bin/coredns }
+    - { vm: backend, src: "{{ host_dir }}/pharos/target/release/examples/memory", dest: /usr/local/bin/k8s-memory-api }
+  changed_when: true
+
+# No isolcpus (needs a reboot and kernel command line access): confine the host's own work to its cores instead.
+- name: Confine host services and sessions to the host cores
+  ansible.builtin.command: >-
+    systemctl set-property --runtime {{ item }} AllowedCPUs={{ (layout_file.content | b64decode | from_json).host | join(',') }}
+  loop: [system.slice, user.slice, init.scope]
+  become: true
+  changed_when: true

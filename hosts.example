@@ -1,0 +1,10 @@
+# Copy to `hosts`. Any SSH-reachable Linux box with KVM works; with the Terraform
+# module, `terraform -chdir=terraform/aws output -raw inventory > hosts` writes this.
+[bench_host]
+bench ansible_host=203.0.113.10 ansible_user=ubuntu
+
+# The VMs are created by `plays/install.yml` on bench_host; reach them through it.
+[vms]
+dut
+loadgen
+backend

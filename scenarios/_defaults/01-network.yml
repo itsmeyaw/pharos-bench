@@ -1,0 +1,3 @@
+network:
+  default:
+    backend_delay_ms: 1     # fixed delay (tc netem) on the backend's replies, a stand-in for a real upstream

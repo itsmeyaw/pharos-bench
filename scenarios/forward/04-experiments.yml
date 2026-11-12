@@ -1,0 +1,5 @@
+experiments:
+  - name: forward
+    stack: forward
+    servers: [pharos, coredns]
+    protocols: { peak: [udp, tcp], sweep: [udp] }

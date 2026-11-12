@@ -1,0 +1,9 @@
+# For debugging the harness on a cheap nested-virtualization instance (e.g. c7i.4xlarge: 8 cores, 32 GiB).
+# Numbers from it mean nothing; use `-e topology=small` with install.yml and scenario.yml.
+host_cores: 2
+host_memory_mb: 4096
+bridge: { name: pbr0, network: 10.77.0.0/24, host_ip: 10.77.0.1 }
+nodes:
+  dut:      { ip: 10.77.0.10, mac: "52:54:00:77:00:10", vcpus: 2, memory_mb: 4096 }
+  loadgen:  { ip: 10.77.0.20, mac: "52:54:00:77:00:20", vcpus: 2, memory_mb: 8192 }
+  backend:  { ip: 10.77.0.30, mac: "52:54:00:77:00:30", vcpus: 1, memory_mb: 4096 }
