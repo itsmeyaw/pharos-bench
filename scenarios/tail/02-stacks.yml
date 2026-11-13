@@ -1,0 +1,40 @@
+# Focus 1: tail latency (p99 / p99.9) under burst load and churn.
+# tail-steady is a production-like cache + forward stack (90% designed hit ratio, cache big enough to hold everything).
+# tail-churn shrinks the cache below the working set, so the 10% never-repeated names and the hot names keep evicting
+# each other; the achieved hit ratio is therefore not checked against the design.
+stacks:
+  tail-steady:
+    corefile: |
+      .:53 {
+          @MULTISOCKET@
+          prometheus :9153
+          cache {
+              success 1000000
+              denial 100000
+          }
+          forward . @UPSTREAM@
+      }
+    services:
+      backend: [{ name: nsd, zone: up.test }]
+      loadgen:
+        - &queries
+          name: queries
+          families: ["h{}.h.up.test,1.0,5000"]
+          unique_pattern: "u@SALT@x{}.h.up.test"
+          hot_pool: 5000
+          hit: 0.9
+          probe: { name: h1.h.up.test, type: A, answer: true }
+  tail-churn:
+    corefile: |
+      .:53 {
+          @MULTISOCKET@
+          prometheus :9153
+          cache {
+              success 5000
+              denial 500
+          }
+          forward . @UPSTREAM@
+      }
+    services:
+      backend: [{ name: nsd, zone: up.test }]
+      loadgen: [{ <<: *queries, check_hit: false }]

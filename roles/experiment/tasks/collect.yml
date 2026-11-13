@@ -1,7 +1,7 @@
 - name: Pack this experiment's results on the dut and loadgen
   ansible.builtin.command: tar -C {{ guest_data }}/results -czf /tmp/{{ blk.exp }}.tgz {{ blk.exp }}
   delegate_to: "{{ item }}"
-  loop: [dut, loadgen]
+  loop: [dut, loadgen, backend]
   changed_when: true
 
 - name: Fetch
@@ -10,9 +10,9 @@
     dest: "{{ results_dir }}/{{ item }}-{{ blk.exp }}.tgz"
     flat: true
   delegate_to: "{{ item }}"
-  loop: [dut, loadgen]
+  loop: [dut, loadgen, backend]
 
 - name: Unpack to results/<run>/<node>/<experiment>/
   ansible.builtin.shell: mkdir -p {{ results_dir }}/{{ item }} && tar -xzf {{ results_dir }}/{{ item }}-{{ blk.exp }}.tgz -C {{ results_dir }}/{{ item }} && rm {{ results_dir }}/{{ item }}-{{ blk.exp }}.tgz
-  loop: [dut, loadgen]
+  loop: [dut, loadgen, backend]
   changed_when: true

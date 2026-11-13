@@ -24,8 +24,9 @@ def nsd_zone(a):
 def nsd_conf(a):
     with open(a.out, "w") as f:
         f.write(
-            "server:\n  ip-address: 0.0.0.0\n  server-count: 4\n  hide-version: yes\n  verbosity: 0\n"
-            f'zone:\n  name: "{a.zone}"\n  zonefile: "{a.zonefile}"\n'
+            "server:\n  ip-address: 0.0.0.0\n  server-count: 4\n  hide-version: yes\n  verbosity: 0\n  rrl-ratelimit: 0\n"
+            + (f"  tcp-count: {a.tcp_count}\n" if a.tcp_count else "")
+            + f'zone:\n  name: "{a.zone}"\n  zonefile: "{a.zonefile}"\n'
         )
 
 
@@ -48,7 +49,7 @@ def main(argv=None):
     z = s.add_parser("nsd-zone"); z.add_argument("--zone", required=True); z.add_argument("--out", required=True)
     z.add_argument("--ttl", type=int, default=300); z.add_argument("--ns-ip", required=True); z.set_defaults(f=nsd_zone)
     c = s.add_parser("nsd-conf"); c.add_argument("--zone", required=True); c.add_argument("--zonefile", required=True)
-    c.add_argument("--out", required=True); c.set_defaults(f=nsd_conf)
+    c.add_argument("--out", required=True); c.add_argument("--tcp-count", type=int); c.set_defaults(f=nsd_conf)
     k = s.add_parser("kubeconfig"); k.add_argument("--server", required=True); k.add_argument("--out", required=True)
     k.set_defaults(f=kubeconfig)
     a = p.parse_args(argv)

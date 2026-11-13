@@ -1,0 +1,7 @@
+- name: Scripts
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ guest_lib }}/{{ item | basename }}"
+    mode: "0755"
+  loop: "{{ lookup('fileglob', playbook_dir + '/../scripts/*.py', wantlist=True) + [playbook_dir + '/../scripts/bench-probe.sh'] }}"
+  become: true

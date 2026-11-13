@@ -15,7 +15,7 @@ def zipf(rng, n, s):
     return lambda k: rng.choices(ranks, cum_weights=cum, k=k)
 
 
-def generate(out, count, seed, families, zipf_s, nx, nx_pattern, nx_count, types, hit, hot_pool, unique_pattern):
+def generate(out, count, seed, families, zipf_s, nx, nx_pattern, nx_count, types, hit, hot_pool, unique_pattern, ndots_search=()):
     rng = random.Random(seed)
     tnames, tweights = zip(*((t, float(w)) for t, w in (x.split("=") for x in types.split(","))))
     fams = []
@@ -26,11 +26,12 @@ def generate(out, count, seed, families, zipf_s, nx, nx_pattern, nx_count, types
     hot_pattern = fams[0][0]
     unique = 0
     chunk = 100_000
+    amp = 2 * (len(ndots_search) + 1) if ndots_search else 1  # lines per logical lookup
     with open(out, "w") as f:
         left = count
-        while left:
-            k = min(chunk, left)
-            left -= k
+        while left > 0:
+            k = max(min(chunk, left) // amp, 1)
+            left -= k * amp
             kinds = rng.choices(range(len(fams)), weights=[x[1] for x in fams], k=k)
             draws = [fams[i][2](kinds.count(i)) for i in range(len(fams))]
             qtypes = rng.choices(tnames, weights=tweights, k=k)
@@ -47,7 +48,11 @@ def generate(out, count, seed, families, zipf_s, nx, nx_pattern, nx_count, types
                 else:
                     i = kinds[j]
                     name = fams[i][0].format(draws[i].pop())
-                lines.append(f"{name} {qtypes[j]}\n")
+                if ndots_search:
+                    # a stub resolver with ndots:5 tries every search suffix (A+AAAA, all NXDOMAIN) before the real name
+                    lines += [f"{n} {t}\n" for n in [f"{name}.{s}" for s in ndots_search] + [name] for t in ("A", "AAAA")]
+                else:
+                    lines.append(f"{name} {qtypes[j]}\n")
             f.writelines(lines)
 
 
@@ -65,13 +70,14 @@ def main(argv=None):
     p.add_argument("--hit", type=float)
     p.add_argument("--hot-pool", type=int, default=5000)
     p.add_argument("--unique-pattern", default="")
+    p.add_argument("--ndots-search", default="", help="comma-separated search suffixes; each name becomes a ndots-style lookup")
     a = p.parse_args(argv)
     if a.hit is not None and "@SALT@" not in a.unique_pattern:
         p.error("--hit needs --unique-pattern containing @SALT@")
     if a.nx and not a.nx_pattern:
         p.error("--nx needs --nx-pattern")
     generate(a.out, a.count, a.seed, a.family, a.zipf, a.nx, a.nx_pattern, a.nx_count, a.types,
-             a.hit, a.hot_pool, a.unique_pattern)
+             a.hit, a.hot_pool, a.unique_pattern, [s for s in a.ndots_search.split(",") if s])
 
 
 if __name__ == "__main__":

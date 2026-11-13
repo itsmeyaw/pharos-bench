@@ -84,6 +84,33 @@ Both servers get the **same Corefile**; `@MULTISOCKET@` becomes `multisocket <du
 
 Run one at a time (`-e scene=cache`). Write your own by copying a directory.
 
+## Performance focus
+
+The benchmark is ranked by what matters for a cluster DNS server, not by raw throughput. Rate-limited runs
+(`sweep`) are fractions of the slower server's peak, so both servers see the same absolute load.
+
+| # | focus | scenario | status |
+|---|---|---|---|
+| 1 | Tail latency (p99, p99.9) under burst load and churn | `tail` | done |
+| 2 | Memory footprint and OOM resilience at high cluster scale | `memory` | done |
+| 3 | Negative caching and upstream forwarding under `ndots` amplification | `ndots` | done |
+| 4 | Watch-to-serve propagation latency during pod rollouts | | not built (the synthetic API never emits watch events) |
+| 5 | Binary size and cold-start time | | not built |
+| 6 | Peak single-core throughput (raw cached QPS) | `whoami`, `cache`, `scaling`, … (the table above) | done, lowest priority |
+
+- **`tail`**: `tail-steady` (50% of peak) is the baseline. `tail-burst` adds a 1 s burst of +40% of peak every 10 s
+  (extra `dnsperf` processes; one merged latency histogram, so p99/p99.9 include the burst queries). `tail-churn` adds an
+  undersized cache (constant eviction) and a Corefile reload at 30 s.
+- **`memory`**: 10k / 50k / 100k / 250k Services and EndpointSlices from `scripts/k8s_api.py` (backend service
+  `k8s-api` with `count:`). `summary.md` has a *Startup* table with peak RSS right after the initial sync (the number
+  that decides OOMs) next to the usual RSS under closed-loop load. `mem-*-512m` / `mem-*-1g` run the server under a cgroup
+  `MemoryMax` (no swap); an OOM kill during sync shows as `ready < blocks` and a non-zero OOM count. Adjust `mem_max` and
+  the scales to your hardware: the limits shipped are guesses.
+- **`ndots`**: each logical lookup becomes 10 queries (A+AAAA for 4 search suffixes that are NXDOMAIN upstream, then the
+  real name), 80% negative. `ndots-nocache` isolates forwarding, `ndots-hit0` is the all-cold worst case (every
+  negative answer is inserted, none reused), `ndots-hit95` is the warm negative cache. `lookups/s` is QPS divided by 10;
+  `denial hit %` is negative-cache hits as a share of all lookups.
+
 ## What a run does
 
 For each experiment, `scripts/plan.py` expands the scenario into *blocks* (one server at one core count), alternating
@@ -108,13 +135,19 @@ phases do not reuse names).
 
 `results/<run-id>/` contains `manifest.json` (Pharos/CoreDNS versions and SHA, host CPU, kernel, nested flag, topology),
 `plan/` (the exact Corefiles and plan), raw `dnsperf` output and probes per run, and after `process`:
-`summary.csv`, `summary.md` and PNGs (p99 vs. QPS per experiment).
+`summary.csv`, `summary.md` and PNGs (p99 vs. QPS per experiment), plus the per-repetition data:
+`runs.csv` (one row per measured run: `rep`, qps, p50/p90/p99/p99.9/max, loss, CPU, RSS, hit ratios, `valid`/`why`; use it for box plots)
+and `latency_hist.csv` (one row per latency-histogram bucket per run: `upper_s`, `count`, `cum_frac`; use it for CDFs, grouping by
+`exp, server, cores, proto, label, rep`). Invalid runs are kept and flagged, so filter on `valid`. Burst runs hold the steady run and all
+bursts in one histogram.
 
 Per run: completed QPS, loss, p50/p90/p99/p99.9 (nearest-rank over `dnsperf`'s latency-histogram bucket upper bounds,
-about 3% resolution, loss excluded), the server's CPU % (`pidstat`, 100 = one core), peak RSS (`VmHWM`, reset at run start),
-cache hit/miss counters. `/proc/net/snmp` (UDP receive-buffer errors) and `/proc/stat` before/after are kept raw in the
+about 3% resolution, loss excluded), the worst latency seen, the server's CPU % (`pidstat`, 100 = one core), peak RSS
+(`VmHWM`, reset at run start), cache hit/miss counters (and the negative-cache share). Per block (`startup.csv`):
+whether the server became ready, `VmHWM`/`VmRSS` right after the initial sync, and OOM kills from `dmesg`.
+`/proc/net/snmp` (UDP receive-buffer errors) and `/proc/stat` before/after are kept raw in the
 probe directory but not yet summarised. `summary` reports medians with bootstrap 95% CIs. A run is **invalid** (counted, excluded) if a sub-peak run loses more than 1% of its queries
-or the achieved cache hit ratio is more than 5 points from the design target.
+(burst runs are exempt) or the achieved cache hit ratio is more than 5 points from the design target (`check_hit: false` turns that off).
 
 ## Cost
 
@@ -141,6 +174,10 @@ ansible-playbook plays/scenario.yml -e scene=smoke -e topology=small
 - Guest-side CPU isolation relies on `vcpupin`/`taskset`/cgroup cpusets, which is weaker than `isolcpus`.
 - Cache hit-ratio design assumes `max_qps` (250k) bounds the offered rate; raise it per experiment if you see more.
 - Vcpu steal is not measured from the host; the guest's `/proc/stat` is kept.
+- `memory`: the synthetic API never emits watch events (no churn in the cache after the sync), and an OOM kill *after* startup
+  aborts the run instead of being recorded. `tail` churn is cache eviction plus a Corefile reload, not Kubernetes object churn.
+- p99.9 rests on the slowest 0.1% of a run's queries (a few thousand at typical rates), and bursts add only a few seconds of
+  burst traffic per run; read the CI, not the point value.
 
 ## Tests
 

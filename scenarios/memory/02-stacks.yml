@@ -1,0 +1,41 @@
+# Focus 2: memory footprint and OOM resilience at high cluster scale.
+# The backend runs scripts/k8s_api.py with N Services and N EndpointSlices (3 endpoints each) in namespace `bench`.
+stacks:
+  k8s-10k:
+    corefile: &corefile |
+      cluster.local:53 {
+          @MULTISOCKET@
+          kubernetes cluster.local {
+              kubeconfig @KUBECONFIG@
+              startup_timeout 300s
+          }
+      }
+    services:
+      backend: [{ name: k8s-api, count: 10000 }]
+      dut: [{ name: kubeconfig }]
+      loadgen:
+        - &queries
+          name: queries
+          families: ["svc{}.bench.svc.cluster.local,1.0,10000"]
+          types: "A=75,AAAA=25"
+          nx: 0.05
+          nx_pattern: "nosvc{}.bench.svc.cluster.local"
+          probe: { name: svc1.bench.svc.cluster.local, type: A, answer: true }
+  k8s-50k:
+    corefile: *corefile
+    services:
+      backend: [{ name: k8s-api, count: 50000 }]
+      dut: [{ name: kubeconfig }]
+      loadgen: [{ <<: *queries, families: ["svc{}.bench.svc.cluster.local,1.0,50000"] }]
+  k8s-100k:
+    corefile: *corefile
+    services:
+      backend: [{ name: k8s-api, count: 100000 }]
+      dut: [{ name: kubeconfig }]
+      loadgen: [{ <<: *queries, families: ["svc{}.bench.svc.cluster.local,1.0,100000"] }]
+  k8s-250k:
+    corefile: *corefile
+    services:
+      backend: [{ name: k8s-api, count: 250000 }]
+      dut: [{ name: kubeconfig }]
+      loadgen: [{ <<: *queries, families: ["svc{}.bench.svc.cluster.local,1.0,250000"] }]

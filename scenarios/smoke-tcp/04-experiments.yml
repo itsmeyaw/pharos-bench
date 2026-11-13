@@ -1,0 +1,7 @@
+# TCP peak only, 2 repeats (server order alternates). Separates Pharos from the backend / load generator.
+uses: [whoami, hosts, forward]
+experiments:
+  - { name: whoami-tcp,       stack: whoami,         servers: [pharos, coredns], protocols: { peak: [tcp] }, reps: 2, warmup: 5, duration: 15 }
+  - { name: hosts-tcp,        stack: hosts,          servers: [pharos, coredns], protocols: { peak: [tcp] }, reps: 2, warmup: 5, duration: 15 }
+  - { name: forward-tcp,      stack: forward,        servers: [pharos, coredns], protocols: { peak: [tcp] }, reps: 2, warmup: 5, duration: 15 }
+  - { name: forward-tcp-big,  stack: forward-bigtcp, servers: [pharos, coredns], protocols: { peak: [tcp] }, reps: 2, warmup: 5, duration: 15 }

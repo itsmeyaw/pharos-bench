@@ -2,7 +2,7 @@
   ansible.builtin.shell: rm -rf {{ guest_data }}/results/{{ blk.exp }} && mkdir -p {{ guest_data }}/results/{{ blk.exp }} && chown -R bench:bench {{ guest_data }}/results/{{ blk.exp }}
   become: true
   delegate_to: "{{ item }}"
-  loop: [dut, loadgen]
+  loop: [dut, loadgen, backend]
   changed_when: true
 
 - name: Backend fixtures

@@ -19,6 +19,15 @@
   ansible.builtin.wait_for_connection: { delay: 20, timeout: 300 }
   delegate_to: dut
 
+- name: Wait until the dut is stable (sshd can still stall right after boot)
+  ansible.builtin.ping:
+  register: stable
+  until: stable is succeeded
+  retries: 12
+  delay: 5
+  delegate_to: dut
+  when: not ansible_check_mode
+
 - name: Install the Corefile
   ansible.builtin.copy:
     src: "{{ build_dir }}/{{ blk.corefile }}"
@@ -30,13 +39,14 @@
 - name: Start the server confined to {{ blk.cores }} cores
   ansible.builtin.shell: >-
     systemd-run --unit={{ unit }} --collect -p LimitNOFILE=1048576
+    {{ ('-p MemoryMax=' ~ exp.mem_max ~ ' -p MemorySwapMax=0') if exp.mem_max else '' }}
     -p StandardOutput=file:/var/log/bench/dns.log -p StandardError=file:/var/log/bench/dns.err
     taskset -c {{ blk.taskset }} {{ blk.binary }} {{ blk.args | replace('{corefile}', '/etc/bench/Corefile') }}
   become: true
   delegate_to: dut
   changed_when: true
 
-- name: Wait until it answers the stack's probe query
+- name: Wait until it answers the stack's probe query (a server killed by its memory limit never does)
   ansible.builtin.shell: "{{ exp.ready }}"
   register: ready
   until: ready.rc == 0
@@ -44,10 +54,25 @@
   delay: 1
   delegate_to: loadgen
   changed_when: false
+  failed_when: false
+
+- name: Record startup state (ready, memory after the initial sync, OOM kills)
+  ansible.builtin.command: >-
+    {{ guest_lib }}/bench-probe.sh sync
+    {{ guest_data }}/results/{{ blk.exp }}/{{ blk.server }}-c{{ blk.cores }}/{{ blk.phase }}-rep{{ blk.rep }}
+    {{ unit }} {{ 1 if ready.rc == 0 else 0 }}
+  become: true
+  delegate_to: dut
+  changed_when: true
+
+- ansible.builtin.fail:
+    msg: "{{ blk.id }}: the server never answered the probe query (see /var/log/bench/dns.err on the dut)"
+  when: ready.rc != 0 and not exp.mem_max
 
 - ansible.builtin.include_tasks: run.yml
   loop: "{{ blk.runs }}"
   loop_control: { loop_var: run }
+  when: ready.rc == 0
 
 - ansible.builtin.include_tasks: collect.yml
   when: blk.last

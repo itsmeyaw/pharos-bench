@@ -1,0 +1,17 @@
+# Peak RSS after the initial sync (startup table in summary.md) and under closed-loop load (RSS column).
+# The -limited experiments run the server under a cgroup MemoryMax (no swap); a server that is OOM-killed while
+# syncing shows up as ready < blocks and a non-zero OOM kill count. An OOM kill after startup aborts the run.
+experiments:
+  - &mem
+    name: mem-10k
+    stack: k8s-10k
+    servers: [pharos, coredns]
+    protocols: { peak: [udp], sweep: [] }
+    reps: 3
+    warmup: 10
+    duration: 30
+  - { <<: *mem, name: mem-50k,  stack: k8s-50k }
+  - { <<: *mem, name: mem-100k, stack: k8s-100k }
+  - { <<: *mem, name: mem-250k, stack: k8s-250k }
+  - { <<: *mem, name: mem-100k-512m, stack: k8s-100k, mem_max: 512M }
+  - { <<: *mem, name: mem-250k-1g,   stack: k8s-250k, mem_max: 1G }

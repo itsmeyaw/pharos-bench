@@ -1,0 +1,25 @@
+# Offered load is a fraction of the slower server's median peak on tail-steady (every experiment refs it).
+# A burst adds `frac` of that peak for `secs` seconds every `every` seconds, on top of the steady 50%:
+# 0.5 + 0.4 = 90% of peak at the top of each burst. Latency percentiles cover steady and burst queries together.
+experiments:
+  - name: tail-steady
+    stack: tail-steady
+    servers: [pharos, coredns]
+    protocols: { peak: [udp], sweep: [udp] }
+    sweep: [0.5]
+  - name: tail-burst
+    stack: tail-steady
+    servers: [pharos, coredns]
+    ref: tail-steady
+    protocols: { peak: [], sweep: [udp] }
+    sweep: [0.5]
+    burst: { frac: 0.4, secs: 1, every: 10 }
+  # Churn: undersized cache, plus a Corefile reload (SIGUSR1) 30 s into the run, plus the same bursts.
+  - name: tail-churn
+    stack: tail-churn
+    servers: [pharos, coredns]
+    ref: tail-steady
+    protocols: { peak: [], sweep: [udp] }
+    sweep: [0.5]
+    burst: { frac: 0.4, secs: 1, every: 10 }
+    actions: reload

@@ -1,0 +1,48 @@
+# Focus 3: negative caching and upstream forwarding under ndots:5 amplification.
+# Each logical lookup becomes 10 queries, as a stub resolver with the Kubernetes search list sends them: A and AAAA for
+# <name>.<each of 4 search suffixes> (all NXDOMAIN upstream) and A and AAAA for <name> itself. 80% of queries are negative.
+# The suffixes sit under up.test so the NSD upstream answers NXDOMAIN with an SOA (negative TTL 300 s).
+# Hit ratio is designed per lookup: a hot lookup repeats all 10 queries, a cold one is never repeated (see README).
+stacks:
+  ndots-hit0: &cached
+    corefile: |
+      .:53 {
+          @MULTISOCKET@
+          prometheus :9153
+          cache {
+              success 1000000
+              denial 100000
+          }
+          forward . @UPSTREAM@
+      }
+    services:
+      backend: [{ name: nsd, zone: up.test }]
+      loadgen:
+        - &queries
+          name: queries
+          families: ["h{}.h.up.test,1.0,5000"]
+          unique_pattern: "u@SALT@x{}.h.up.test"
+          hot_pool: 5000
+          hit: 0.0
+          ndots_search: [ns.svc.cl.up.test, svc.cl.up.test, cl.up.test, node.up.test]
+          probe: { name: h1.h.up.test, type: A, answer: true }
+  ndots-hit95:
+    <<: *cached
+    services:
+      backend: [{ name: nsd, zone: up.test }]
+      loadgen: [{ <<: *queries, hit: 0.95 }]
+  # No cache plugin: every query goes upstream, so this isolates forwarding from caching.
+  ndots-nocache:
+    corefile: |
+      .:53 {
+          @MULTISOCKET@
+          prometheus :9153
+          forward . @UPSTREAM@
+      }
+    services:
+      backend: [{ name: nsd, zone: up.test }]
+      loadgen:
+        - name: queries
+          families: ["h{}.h.up.test,1.0,5000"]
+          ndots_search: [ns.svc.cl.up.test, svc.cl.up.test, cl.up.test, node.up.test]
+          probe: { name: h1.h.up.test, type: A, answer: true }

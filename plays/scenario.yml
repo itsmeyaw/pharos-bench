@@ -24,6 +24,12 @@
         nested: "{{ virt.stdout != 'none' }}"
         virt_kind: "{{ virt.stdout }}"
 
+- name: Refresh the helper scripts on the VMs (they change between runs)
+  hosts: vms
+  gather_facts: false
+  tasks:
+    - ansible.builtin.include_role: { name: vm_guest, tasks_from: scripts }
+
 - name: Run the scenario
   hosts: localhost
   # no `connection: local` here: it would also apply to delegate_to targets

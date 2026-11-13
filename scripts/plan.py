@@ -61,6 +61,8 @@ def queries_command(exp, q, warmup, duration):
         args += [f"--nx {q['nx']}", f"--nx-pattern {shlex.quote(q['nx_pattern'])}"]
     if q.get("types"):
         args.append(f"--types {q['types']}")
+    if q.get("ndots_search"):
+        args.append(f"--ndots-search {shlex.quote(','.join(q['ndots_search']))}")
     if salted:
         args += [f"--hit {q['hit']}", f"--hot-pool {q.get('hot_pool', 5000)}",
                  f"--unique-pattern {shlex.quote(q['unique_pattern'])}"]
@@ -86,12 +88,16 @@ def prepare_commands(exp, stack, topo, net, warmup, duration):
                 z = svc["zone"]
                 cmds[node] += [
                     f"{py}/gen_data.py nsd-zone --zone {z} --ns-ip {backend_ip} --out /etc/nsd/{z}.zone",
-                    f"{py}/gen_data.py nsd-conf --zone {z} --zonefile {z}.zone --out /etc/nsd/nsd.conf",
-                    f"tc qdisc replace dev eth0 root netem delay {net.get('backend_delay_ms', 1)}ms",
+                    f"{py}/gen_data.py nsd-conf --zone {z} --zonefile {z}.zone --out /etc/nsd/nsd.conf"
+                    + (f" --tcp-count {svc['tcp_count']}" if "tcp_count" in svc else ""),
+                    f"tc qdisc replace dev eth0 root netem delay {net.get('backend_delay_ms', 1)}ms limit 100000",
                     "systemctl restart nsd",
                 ]
             elif n == "k8s-api":
-                cmds[node].append("systemd-run --unit=k8s-api --collect /usr/local/bin/k8s-memory-api serve 0.0.0.0:6443")
+                # `count` selects the configurable Python API (scale tests); without it the pharos Rust example (10,000)
+                cmds[node].append(f"systemd-run --unit=k8s-api --collect python3 {LIB}/k8s_api.py --port 6443 --services {svc['count']}"
+                                  if "count" in svc else
+                                  "systemd-run --unit=k8s-api --collect /usr/local/bin/k8s-memory-api serve 0.0.0.0:6443")
             elif n == "queries":
                 cmds[node] += [f"mkdir -p {DATA}/queries", queries_command(exp, svc, warmup, duration)]
                 queries = svc
@@ -110,17 +116,17 @@ def ready_command(probe, ip):
     return cmd
 
 
-def action_commands(actions, net):
+def action_commands(actions, net, duration):
     """(scheduled, cleanup): scheduled run at `at` seconds into the measured phase; cleanup after the run."""
     scheduled, cleanup = [], []
     for a in actions:
         if a["do"] == "reload":
-            scheduled.append({"node": a["node"], "at": a["at"], "cmd": f"systemctl kill -s USR1 {UNIT}"})
+            scheduled.append({"node": a["node"], "at": min(a["at"], duration // 2), "cmd": f"systemctl kill -s USR1 {UNIT}"})
         elif a["do"] == "delay":
-            scheduled.append({"node": a["node"], "at": a["at"],
-                              "cmd": f"tc qdisc replace dev eth0 root netem delay {a['ms']}ms"})
+            scheduled.append({"node": a["node"], "at": min(a["at"], duration // 2),
+                              "cmd": f"tc qdisc replace dev eth0 root netem delay {a['ms']}ms limit 100000"})
             cleanup.append({"node": a["node"],
-                            "cmd": f"tc qdisc replace dev eth0 root netem delay {net.get('backend_delay_ms', 1)}ms"})
+                            "cmd": f"tc qdisc replace dev eth0 root netem delay {net.get('backend_delay_ms', 1)}ms limit 100000"})
         else:
             raise SystemExit(f"unknown action {a['do']}")
     return scheduled, cleanup
@@ -155,13 +161,16 @@ def build(root, scene, out_dir, topology=None):
         for c in cores_list:
             if c > topo["nodes"]["dut"]["vcpus"]:
                 raise SystemExit(f"{exp['name']}: dut_cores {c} exceeds dut vcpus")
-        scheduled, cleanup = action_commands(s["03-actions"].get("actions", {}).get(exp.get("actions", "none"), []), net)
+        scheduled, cleanup = action_commands(s["03-actions"].get("actions", {}).get(exp.get("actions", "none"), []), net, duration)
         prep, q = prepare_commands(exp, stack, topo, net, warmup, duration)
         plan["experiments"][exp["name"]] = {
             "prepare": prep, "ready": ready_command(q["probe"], topo["nodes"]["dut"]["ip"]),
             "warmup": warmup, "duration": duration, "queries": f"{DATA}/queries/{exp['name']}.txt",
-            "salted": "hit" in q, "target_hit": q.get("hit"), "actions": scheduled, "cleanup": cleanup,
+            "salted": "hit" in q, "target_hit": q.get("hit") if q.get("check_hit", True) else None,
+            "actions": scheduled, "cleanup": cleanup,
             "ref": exp.get("ref", exp["name"]), "runs_jsonl": f"{DATA}/results/{exp['name']}/runs.jsonl",
+            "burst": exp.get("burst") or {}, "mem_max": exp.get("mem_max"),
+            "amp": 2 * (len(q["ndots_search"]) + 1) if q.get("ndots_search") else 1,
         }
         first = True
         for phase in ("peak", "sweep"):

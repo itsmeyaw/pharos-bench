@@ -1,0 +1,3 @@
+# Debug: `pharos` is the current main; pharos-before is the pre-fix build (8cfcfa7), copied to the dut by hand.
+servers:
+  pharos-before: { binary: /usr/local/bin/pharos-before, args: "--conf {corefile}", multisocket: true }

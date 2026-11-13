@@ -1,0 +1,4 @@
+experiments:
+  - { name: ndots-nocache, stack: ndots-nocache, servers: [pharos, coredns], sweep: [0.5, 0.9] }
+  - { name: ndots-hit0,    stack: ndots-hit0,    servers: [pharos, coredns], sweep: [0.5, 0.9] }
+  - { name: ndots-hit95,   stack: ndots-hit95,   servers: [pharos, coredns], sweep: [0.5, 0.9] }

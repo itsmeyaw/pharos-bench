@@ -6,7 +6,36 @@ import re
 import sys
 
 
-def parse(text):
+def percentiles(buckets, done):
+    out = {}
+    for name, per_mille in (("p50", 500), ("p90", 900), ("p99", 990), ("p999", 999)):
+        rank = -(-done * per_mille // 1000)
+        total = 0
+        for upper, n in buckets:
+            total += n
+            if total >= rank:
+                out[name] = upper
+                break
+    return out
+
+
+def merge(rs, seconds):
+    """Combine concurrent dnsperf runs (steady + bursts, parsed with keep_buckets=True) into one record.
+    qps is completed queries per measured second of the steady run."""
+    done = sum(r["completed"] for r in rs)
+    hist = {}
+    for r in rs:
+        for upper, n in r["buckets"]:
+            hist[upper] = hist.get(upper, 0) + n
+    sent = sum(r["sent"] for r in rs)
+    buckets = sorted(hist.items())
+    lost = sum(r.get("lost", 0) for r in rs)
+    return {"sent": sent, "completed": done, "lost": lost, "qps": done / seconds, "loss_pct": 100.0 * lost / max(sent, 1),
+            "avg": sum(r["avg"] * r["completed"] for r in rs) / done, "min": min(r["min"] for r in rs),
+            "max": max(r["max"] for r in rs), **percentiles(buckets, done), "buckets": buckets}
+
+
+def parse(text, keep_buckets=False):
     r = {}
     buckets = []
     in_hist = False
@@ -45,14 +74,9 @@ def parse(text):
     else:
         if sum(n for _, n in buckets) != done:
             raise ValueError("dnsperf histogram missing or incomplete (need -O latency-histogram)")
-        for name, per_mille in (("p50", 500), ("p90", 900), ("p99", 990), ("p999", 999)):
-            rank = -(-done * per_mille // 1000)
-            total = 0
-            for upper, n in buckets:
-                total += n
-                if total >= rank:
-                    r[name] = upper
-                    break
+        r.update(percentiles(buckets, done))
+    if keep_buckets:
+        r["buckets"] = buckets
     return r
 
 

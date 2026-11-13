@@ -1,0 +1,17 @@
+# Same as `forward`, but NSD may hold 10,000 concurrent TCP connections (its default is 100).
+stacks:
+  forward-bigtcp:
+    corefile: |
+      .:53 {
+          @MULTISOCKET@
+          forward . @UPSTREAM@
+      }
+    services:
+      backend:
+        - { name: nsd, zone: up.test, tcp_count: 10000 }
+      loadgen:
+        - name: queries
+          families: ["h{}.h.up.test,1.0,1000000"]
+          nx: 0.07
+          nx_pattern: "x{}.up.test"
+          probe: { name: h1.h.up.test, type: A, answer: true }

@@ -12,6 +12,7 @@
 - name: Offered load
   ansible.builtin.set_fact:
     rate: "{{ ((run.frac * (refpeak.stdout | int)) | int) if run.mode == 'sweep' else 0 }}"
+    burst_rate: "{{ ((exp.burst.frac * (refpeak.stdout | int)) | int) if (exp.burst and run.mode == 'sweep') else 0 }}"
     common: >-
       {{ ['--server-ip', topo.nodes.dut.ip, '--proto', run.proto, '--queries', exp.queries,
           '--out', guest_data ~ '/results/' ~ rdir ~ '/dnsperf'] + (['--salted'] if exp.salted else []) }}
@@ -27,6 +28,8 @@
       label: "{{ run.label }}"
       rundir: "{{ rdir }}"
       target_hit: "{{ exp.target_hit }}"
+      burst: "{{ 'yes' if exp.burst and run.mode == 'sweep' else '' }}"
+      amp: "{{ exp.amp }}"
 
 - name: Warmup (output discarded)
   ansible.builtin.command:
@@ -38,6 +41,13 @@
   ansible.builtin.command: "{{ guest_lib }}/bench-probe.sh start {{ guest_data }}/results/{{ rdir }} {{ exp.duration + 3 }} {{ unit }}"
   become: true
   delegate_to: dut
+  changed_when: true
+
+- name: Sample whole-VM CPU on the loadgen and backend (to see who is the bottleneck)
+  ansible.builtin.command: "{{ guest_lib }}/bench-probe.sh cpu {{ guest_data }}/results/{{ rdir }} {{ exp.duration }}"
+  become: true
+  delegate_to: "{{ item }}"
+  loop: [loadgen, backend]
   changed_when: true
 
 - name: Schedule disturbances (seconds into the measured phase)
@@ -52,6 +62,7 @@
   ansible.builtin.command:
     argv: >-
       {{ ['python3', guest_lib ~ '/bench-run.py', 'measure', '--seconds', exp.duration, '--rate', rate,
+          '--burst-rate', burst_rate, '--burst-secs', exp.burst.secs | default(1), '--burst-every', exp.burst.every | default(10),
           '--meta', meta | to_json, '--runs-jsonl', exp.runs_jsonl] + common }}
   delegate_to: loadgen
   changed_when: true
