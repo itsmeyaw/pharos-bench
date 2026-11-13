@@ -160,6 +160,8 @@ class Plan(unittest.TestCase):
 
     def test_focus_scenarios_carry_their_settings(self):
         with tempfile.TemporaryDirectory() as d:
+            cache = plan.build(ROOT, "cache", d)
+            self.assertEqual({b["cores"] for b in cache["blocks"] if b["exp"] == "cache-hit95"}, {1})
             e = plan.build(ROOT, "tail", d)["experiments"]
             self.assertEqual(e["tail-burst"]["burst"], {"frac": 0.4, "secs": 1, "every": 10})
             self.assertEqual((e["tail-steady"]["burst"], e["tail-steady"]["target_hit"]), ({}, 0.9))

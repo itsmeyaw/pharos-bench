@@ -1,8 +1,0 @@
-# Short run of the stacks that need the backend VM (NSD upstream, synthetic Kubernetes API); checks the plumbing only.
-uses: [forward, kubernetes]
-experiments:
-  - { name: forward, stack: forward, servers: [pharos, coredns], protocols: { peak: [udp, tcp], sweep: [udp] }, sweep: [0.5], reps: 1, warmup: 5, duration: 10 }
-  - { name: kubernetes, stack: kubernetes, servers: [pharos, coredns], protocols: { peak: [udp], sweep: [udp] }, sweep: [0.5], reps: 1, warmup: 5, duration: 10 }
-  # Disturbances (reload under load, backend slowdown): rates come from `forward` above.
-  - { name: forward-reload, stack: forward, servers: [pharos, coredns], actions: reload, ref: forward, protocols: { peak: [], sweep: [udp] }, sweep: [0.5], reps: 1, warmup: 5, duration: 10 }
-  - { name: forward-backend-slow, stack: forward, servers: [pharos, coredns], actions: backend-slow, ref: forward, protocols: { peak: [], sweep: [udp] }, sweep: [0.5], reps: 1, warmup: 5, duration: 10 }

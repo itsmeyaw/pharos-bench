@@ -1,2 +1,0 @@
-experiments:
-  - { name: acl-view, stack: acl-view, servers: [pharos, coredns] }

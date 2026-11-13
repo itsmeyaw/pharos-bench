@@ -72,15 +72,11 @@ Both servers get the **same Corefile**; `@MULTISOCKET@` becomes `multisocket <du
 | scenario | what it exercises |
 |---|---|
 | `smoke` | `whoami`, 1 repeat, 5 s warmup + 10 s measured, peak and one sweep point (checks the whole pipeline; ~10 min) |
-| `whoami` | floor; also CoreDNS without `multisocket` (informational) |
-| `hosts` | 100k-entry `hosts` file (`file` is not implemented in Pharos) |
-| `forward` | `forward` to NSD with 1 ms upstream delay, 7% NXDOMAIN |
-| `cache` | `cache` + `forward` at designed hit ratios 0 / 50 / 95% |
-| `rewrite-template` | `rewrite name suffix`, `template`, `hosts` |
-| `acl-view` | `view` with `incidr`, `acl`, `hosts` |
-| `kubernetes` | `kubernetes` against 10,000 Services / EndpointSlices |
-| `production` | errors, log, health, ready, prometheus, cache, loop, forward; plus reload-under-load and backend-slowdown experiments |
-| `scaling` | `dut_cores` 1, 2, 4, 8 for `whoami` and `cache` (3 repeats) |
+| `whoami` | floor and stack used by `smoke`; also CoreDNS without `multisocket` (informational) |
+| `cache` | `cache` + `forward` at designed hit ratios 0 / 50 / 95%; 95% runs on one core |
+| `tail` | latency under steady load, bursts and cache churn |
+| `memory` | Kubernetes scale and memory limits |
+| `ndots` | negative caching and forwarding under search amplification |
 
 Run one at a time (`-e scene=cache`). Write your own by copying a directory.
 
@@ -96,7 +92,7 @@ The benchmark is ranked by what matters for a cluster DNS server, not by raw thr
 | 3 | Negative caching and upstream forwarding under `ndots` amplification | `ndots` | done |
 | 4 | Watch-to-serve propagation latency during pod rollouts | | not built (the synthetic API never emits watch events) |
 | 5 | Binary size and cold-start time | | not built |
-| 6 | Peak single-core throughput (raw cached QPS) | `whoami`, `cache`, `scaling`, … (the table above) | done, lowest priority |
+| 6 | Peak single-core throughput (raw cached QPS) | `cache` (`cache-hit95`) | done, lowest priority |
 
 - **`tail`**: `tail-steady` (50% of peak) is the baseline. `tail-burst` adds a 1 s burst of +40% of peak every 10 s
   (extra `dnsperf` processes; one merged latency histogram, so p99/p99.9 include the burst queries). `tail-churn` adds an
@@ -123,10 +119,10 @@ server order between repeats (A,B,B,A,…); all peak blocks come first, then swe
 Modes: **peak** is closed loop (64 clients, 8 threads, 512 in flight); **sweep** is open loop at fixed rates
 `-Q` = fraction (25/50/75/90%) of the **slower server's median peak** from the same experiment (`ref:` can point at
 another experiment), so both servers see identical absolute load. Defaults: 30 s warmup, 60 s measured, 5 repeats,
-UDP for peak and sweep, TCP for peak on `whoami`, `hosts`, `forward`.
+UDP for peak and sweep, TCP for peak on `whoami`.
 
 Workload (`scripts/gen_queries.py`, seeded, so identical for both servers): Zipf(1.0) name popularity, type mix
-A 65 / AAAA 25 / TXT 4 / MX 3 / SRV 3 (A/AAAA only for `hosts`-based stacks, A/AAAA for Kubernetes), 5–7% NXDOMAIN,
+A 65 / AAAA 25 / TXT 4 / MX 3 / SRV 3 (A/AAAA for Kubernetes), with workload-specific NXDOMAIN rates,
 EDNS0 on every query (`dnsperf -e`). For `cache`, the hit ratio is built into the stream: a fraction of queries come
 from a small hot pool, the rest are never-repeated names (`@SALT@` is replaced per run so warmup and measured
 phases do not reuse names).
@@ -151,9 +147,8 @@ probe directory but not yet summarised. `summary` reports medians with bootstrap
 
 ## Cost
 
-AWS `c7i.metal-24xl` on demand is roughly $4–5/h. My estimate for the full matrix (10 scenarios, defaults above) is
-about 12–14 h of runtime, i.e. $55–70, longer than the 8 h default TTL: run scenarios individually, or raise
-`-var ttl_hours=16`. The TTL guard lives in Terraform only (`shutdown -h` + terminate on shutdown); with another provider
+AWS `c7i.metal-24xl` on demand is roughly $4–5/h. Runtime depends on the scenarios and repetitions selected; run
+scenarios individually or adjust `-var ttl_hours` if needed. The TTL guard lives in Terraform only (`shutdown -h` + terminate on shutdown); with another provider
 you have to bring your own. `terraform destroy` as soon as you are done.
 
 ## Debugging the harness cheaply

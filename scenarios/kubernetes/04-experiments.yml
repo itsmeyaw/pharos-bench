@@ -1,2 +1,0 @@
-experiments:
-  - { name: kubernetes, stack: kubernetes, servers: [pharos, coredns] }
